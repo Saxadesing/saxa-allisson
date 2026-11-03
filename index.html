@@ -3,9 +3,10 @@
 <link rel="preload" href="assets/recepcion.webp" as="image">
 <link rel="preload" href="assets/rincon-floral.webp" as="image"><style>
 *{box-sizing:border-box}
-html,body{margin:0;background:#000814;color:#f2c982;height:100%;overflow:hidden}
-html.is-unlocked{height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto}
-html.is-unlocked body{height:auto;min-height:100%;overflow:visible}
+html,body{margin:0;background:#000814;color:#f2c982;-webkit-overflow-scrolling:touch;overscroll-behavior-y:none}
+html:not(.is-unlocked),html:not(.is-unlocked) body{height:100%;overflow:hidden}
+html.is-unlocked{height:auto;min-height:100%;overflow-x:clip;overflow-y:visible}
+html.is-unlocked body{height:auto;min-height:100%;overflow-x:clip;overflow-y:visible}
 body{font-family:Georgia,'Times New Roman',serif}
 main{position:relative;width:100%;min-height:100svh;overflow:hidden;isolation:isolate}
 html.is-unlocked main{overflow:visible}
@@ -327,7 +328,7 @@ html.is-unlocked .music-toggle{
 .parents-date-flow{
   position:relative;
   width:100%;
-  height:1500vh;
+  height:2200svh;
   margin-top:-14svh;
   background:#000814;
 }
@@ -336,8 +337,12 @@ html.is-unlocked .music-toggle{
   top:0;
   width:100%;
   height:100svh;
+  height:100dvh;
   overflow:hidden;
   isolation:isolate;
+  backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;
+  transform:translateZ(0);
 }
 .parents{
   position:absolute;
@@ -993,7 +998,7 @@ html.is-unlocked .music-toggle{
   /* 2. Flujo continuo Padres -> Fecha -> Galería -> Ceremonia -> Celebración -> Cierre */
   .parents-date-flow{
     margin-top:-12svh;
-    height:1500vh;
+    height:2400svh;
   }
   .parents{
     padding:14svh 20px 16svh;
@@ -2037,59 +2042,104 @@ function startTypewriter(instant){
 
 let coverState='cover',touchStartY=0,touchStartedAtTop=false,lastScrolledDownTime=0;
 
-// Control continuo por scroll con Parallax multicapa cinematográfico y macro-zoom continuo a la fecha
+// Referencias DOM cacheadas (evita querySelector en cada frame de scroll)
+const galSection=document.getElementById('galeria');
+const galCardMain=document.querySelector('.gallery-card-main');
+const galCardSub=document.querySelector('.gallery-card-sub');
+const galLineTop=document.querySelector('.gallery-axis-line.line-top');
+const galLineBottom=document.querySelector('.gallery-axis-line.line-bottom');
+const galQuote=document.querySelector('.gallery-quote');
+const dateContent=document.querySelector('.date-content');
+const dateFgLights=document.querySelector('.date-fg-lights');
+
+// Métricas de layout estables (evita saltos en Android cuando la barra de direcciones se oculta/muestra y elimina Layout Thrashing en iOS)
+let stableVh=window.innerHeight||1;
+let lastLayoutWidth=window.innerWidth||1;
+let cachedFlowTop=0;
+let cachedFlowHeight=1;
+let cachedRoseBase=44;
+let cachedRoseStartY=0;
+let rafScrollPending=false;
+
+function updateLayoutMetrics(forceHeight){
+  const curW=window.innerWidth||1;
+  const curH=window.innerHeight||1;
+  if(forceHeight||Math.abs(curW-lastLayoutWidth)>2||!stableVh){
+    stableVh=curH;
+    lastLayoutWidth=curW;
+  }
+  if(flowSticky&&flowSticky.offsetHeight>100){
+    stableVh=flowSticky.offsetHeight;
+  }
+  cachedFlowTop=flowEl.offsetTop||0;
+  cachedFlowHeight=flowEl.offsetHeight||stableVh*22;
+  if(parentsRose){
+    cachedRoseBase=parentsRose.offsetWidth||44;
+  }
+}
+
+function scheduleScrollScene(){
+  if(!rafScrollPending){
+    rafScrollPending=true;
+    requestAnimationFrame(()=>{
+      rafScrollPending=false;
+      updateScrollScene();
+    });
+  }
+}
+
+// Control continuo por scroll con Parallax multicapa cinematográfico y zonas de lectura amplias (Android + iOS 60/120fps)
 function updateScrollScene(){
-  const vh=window.innerHeight||1;
-  const scrollY=window.scrollY||document.documentElement.scrollTop||document.body.scrollTop||0;
+  const vh=stableVh||window.innerHeight||1;
+  const scrollY=window.pageYOffset||document.documentElement.scrollTop||0;
   if(scrollY>6)lastScrolledDownTime=performance.now();
 
-  const flowTop=flowEl.offsetTop;
-  const totalTrack=flowEl.offsetHeight-vh;
-  const pRaw=(scrollY-flowTop)/Math.max(1,totalTrack);
+  const flowTop=cachedFlowTop||flowEl.offsetTop;
+  const totalTrack=Math.max(1,(cachedFlowHeight||flowEl.offsetHeight)-vh);
+  const pRaw=(scrollY-flowTop)/totalTrack;
   const p=Math.max(0,Math.min(1,pRaw));
+  const isMobile=lastLayoutWidth<=768;
 
-  // 1. Capa de Fondo (Mantel azul): desciende suavemente a ritmo de paralaje continuo
-  const flowTopRel = flowTop - scrollY;
-  const progressEntry=Math.max(0,Math.min(1,(vh-flowTopRel)/(vh*1.2)));
-  const pPadres = Math.max(0, Math.min(1, p / 0.15));
-  const ePadres = pPadres * pPadres * (3 - 2 * pPadres);
+  const flowTopRel=flowTop-scrollY;
 
-  const mantelShift=(progressEntry-0.5)*-70 - (ePadres * 40);
-  parentsEl.style.setProperty('--mantel-shift',`${mantelShift.toFixed(1)}px`);
+  // Solo calcular y escribir variables de paralaje de Mis Padres cuando la sección es visible o cercana (p <= 0.22)
+  if(p<=0.22){
+    const progressEntry=Math.max(0,Math.min(1,(vh-flowTopRel)/(vh*1.2)));
+    const pPadres=Math.max(0,Math.min(1,p/0.13));
+    const ePadres=pPadres*pPadres*(3-2*pPadres);
 
-  // 2. Capa Media (Textos + Rosa central): suave amortiguación en paralaje
-  const contentShift=(progressEntry-0.5)*16 + (ePadres * -14);
-  parentsEl.style.setProperty('--content-shift',`${contentShift.toFixed(1)}px`);
+    const mantelShift=(progressEntry-0.5)*-70-(ePadres*40);
+    parentsEl.style.setProperty('--mantel-shift',`${mantelShift.toFixed(1)}px`);
 
-  // 3. Capa Frontal (Enredaderas laterales vivas y con movimiento continuo):
-  // a) Emergencia inicial desde abajo al asomarse la sección desde Bienvenida
-  const vProg=Math.max(0,Math.min(1,(vh*0.95-flowTopRel)/(vh*0.85)));
-  const rawL=Math.max(0,Math.min(1,vProg/0.80));
-  const rawR=Math.max(0,Math.min(1,(vProg-0.15)/0.80));
-  const smoothL=rawL*rawL*(3-2*rawL);
-  const smoothR=rawR*rawR*(3-2*rawR);
-  parentsEl.style.setProperty('--vl',smoothL.toFixed(4));
-  parentsEl.style.setProperty('--vr',smoothR.toFixed(4));
+    const contentShift=(progressEntry-0.5)*16+(ePadres*-14);
+    parentsEl.style.setProperty('--content-shift',`${contentShift.toFixed(1)}px`);
 
-  // b) Ascenso orgánico continuo y balanceo sutil mientras se recorre la sección de Mis Padres (p de 0.00 a 0.15)
-  const vineYL = -75 * ePadres;
-  const vineYR = -105 * ePadres;
-  const vineRotL = -2.4 * ePadres;
-  const vineRotR = 3.2 * ePadres;
+    const vProg=Math.max(0,Math.min(1,(vh*0.95-flowTopRel)/(vh*0.85)));
+    const rawL=Math.max(0,Math.min(1,vProg/0.80));
+    const rawR=Math.max(0,Math.min(1,(vProg-0.15)/0.80));
+    const smoothL=rawL*rawL*(3-2*rawL);
+    const smoothR=rawR*rawR*(3-2*rawR);
+    parentsEl.style.setProperty('--vl',smoothL.toFixed(4));
+    parentsEl.style.setProperty('--vr',smoothR.toFixed(4));
 
-  // c) Al aproximarse al zoom de la rosa (p de 0.15 a 0.22), se abren suavemente hacia los extremos
-  const pZoomVine = Math.max(0, Math.min(1, (p - 0.15) / 0.07));
-  const vineXL = -50 * pZoomVine;
-  const vineXR = 50 * pZoomVine;
+    const vineYL=-75*ePadres;
+    const vineYR=-105*ePadres;
+    const vineRotL=-2.4*ePadres;
+    const vineRotR=3.2*ePadres;
 
-  parentsEl.style.setProperty('--vine-y-l',`${vineYL.toFixed(1)}px`);
-  parentsEl.style.setProperty('--vine-y-r',`${vineYR.toFixed(1)}px`);
-  parentsEl.style.setProperty('--vine-x-l',`${vineXL.toFixed(1)}px`);
-  parentsEl.style.setProperty('--vine-x-r',`${vineXR.toFixed(1)}px`);
-  parentsEl.style.setProperty('--vine-rot-l',`${vineRotL.toFixed(2)}deg`);
-  parentsEl.style.setProperty('--vine-rot-r',`${vineRotR.toFixed(2)}deg`);
+    const pZoomVine=Math.max(0,Math.min(1,(p-0.13)/0.06));
+    const vineXL=-50*pZoomVine;
+    const vineXR=50*pZoomVine;
 
-  // 4. Activación de la animación editorial escalonada al entrar en la zona de lectura (y reseteo al regresar arriba)
+    parentsEl.style.setProperty('--vine-y-l',`${vineYL.toFixed(1)}px`);
+    parentsEl.style.setProperty('--vine-y-r',`${vineYR.toFixed(1)}px`);
+    parentsEl.style.setProperty('--vine-x-l',`${vineXL.toFixed(1)}px`);
+    parentsEl.style.setProperty('--vine-x-r',`${vineXR.toFixed(1)}px`);
+    parentsEl.style.setProperty('--vine-rot-l',`${vineRotL.toFixed(2)}deg`);
+    parentsEl.style.setProperty('--vine-rot-r',`${vineRotR.toFixed(2)}deg`);
+  }
+
+  // Activación de la animación editorial escalonada al entrar en la zona de lectura
   if(flowTopRel<vh*0.78){
     if(!parentsEl.classList.contains('is-in-view')){
       parentsEl.classList.add('is-in-view');
@@ -2098,30 +2148,26 @@ function updateScrollScene(){
     parentsEl.classList.remove('is-in-view');
   }
 
-  // --- SECUENCIA CONTINUA: PADRES -> ROSA -> FECHA -> GALERÍA -> CEREMONIA -> RECEPCIÓN ---
-  const galSection=document.getElementById('galeria');
-  const galCardMain=document.querySelector('.gallery-card-main');
-  const galCardSub=document.querySelector('.gallery-card-sub');
-  const galLineTop=document.querySelector('.gallery-axis-line.line-top');
-  const galLineBottom=document.querySelector('.gallery-axis-line.line-bottom');
-  const galQuote=document.querySelector('.gallery-quote');
-  const dateContent=document.querySelector('.date-content');
-  const dateFgLights=document.querySelector('.date-fg-lights');
-  const isMobile=window.innerWidth<=768;
-
   if(flowSticky){
     flowSticky.style.backgroundColor=p>=0.77?'#fbf8f2':'';
   }
   if(p>=0.77){
-    if(musicToggle) musicToggle.style.color='#122135';
-    if(navToggle) navToggle.style.color='#122135';
+    if(musicToggle)musicToggle.style.color='#122135';
+    if(navToggle)navToggle.style.color='#122135';
   }else{
-    if(musicToggle) musicToggle.style.color='#f5d18d';
-    if(navToggle) navToggle.style.color='#f4d49c';
+    if(musicToggle)musicToggle.style.color='#f5d18d';
+    if(navToggle)navToggle.style.color='#f4d49c';
   }
 
-  // Fase 1: Padres visibles y activos (0.00 a 0.15)
-  if(p<=0.15){
+  // Garantía de limpieza de Cierre cuando estamos antes de la transición final (evita bloqueo al saltar desde el menú o hacer scroll rápido hacia arriba)
+  if(p<=0.93&&closingEl){
+    closingEl.style.opacity='0';
+    closingEl.style.pointerEvents='none';
+    closingEl.classList.remove('is-revealed');
+  }
+
+  // Fase 1: Padres visibles y activos — Zona de lectura amplia (0.00 a 0.13)
+  if(p<=0.13){
     parentsEl.style.opacity='1';
     parentsEl.style.filter='none';
     parentsEl.style.pointerEvents='auto';
@@ -2136,33 +2182,28 @@ function updateScrollScene(){
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
     if(ceremonyEl){ceremonyEl.style.opacity='0';ceremonyEl.style.pointerEvents='none';ceremonyEl.style.clipPath='inset(0% 50% 0% 50%)';}
     if(receptionEl){receptionEl.style.opacity='0';receptionEl.style.pointerEvents='none';}
-    if(musicToggle){musicToggle.style.color='#f5d18d';}
   }
-  // Fase 2: Transición Macro-Zoom Rosa (0.15 a 0.22)
-  else if(p<=0.22){
-    const ez=(p-0.15)/0.07;
-    const pFade=Math.min(1,ez/0.25);
+  // Fase 2: Transición Macro-Zoom Rosa (0.13 a 0.19)
+  else if(p<=0.19){
+    const ez=(p-0.13)/0.06;
+    const pFade=Math.min(1,ez/0.28);
     parentsEl.style.opacity=(1-pFade).toFixed(3);
-    parentsEl.style.filter=pFade>0?`blur(${(pFade*6).toFixed(1)}px)`:'none';
+    parentsEl.style.filter=(!isMobile&&pFade>0)?`blur(${(pFade*5).toFixed(1)}px)`:'none';
     parentsEl.style.pointerEvents='none';
 
     parentsRose.style.opacity='0';
     zoomOverlay.style.opacity='1';
 
-    const diag=Math.hypot(window.innerWidth,window.innerHeight);
-    const roseBase=parentsRose.offsetWidth||44;
-    const maxScale=Math.max(26,(diag*1.32)/roseBase);
+    const diag=Math.hypot(lastLayoutWidth,vh);
+    const maxScale=isMobile?18:Math.max(24,(diag*1.25)/cachedRoseBase);
 
-    const roseRect=parentsRose.getBoundingClientRect();
-    const stickyRect=flowSticky.getBoundingClientRect();
-    const startY=(roseRect.top+roseRect.height/2)-(stickyRect.top+vh/2);
-    const curY=startY*(1-ez);
-    const curScale=1+(maxScale-1)*Math.pow(ez,2.2);
-    const curRot=ez*26;
-    const curBlur=Math.pow(ez,2.2)*18;
+    const curY=cachedRoseStartY*(1-ez);
+    const curScale=1+(maxScale-1)*Math.pow(ez,2.1);
+    const curRot=ez*24;
+    const curBlur=isMobile?Math.pow(ez,2.2)*8:Math.pow(ez,2.2)*16;
 
     zoomRose.style.transform=`translate3d(0,${curY.toFixed(1)}px,0) scale(${curScale.toFixed(2)}) rotate(${curRot.toFixed(1)}deg)`;
-    zoomRose.style.filter=`blur(${curBlur.toFixed(1)}px) brightness(.9) contrast(1.06) saturate(1.02) drop-shadow(0 8px 18px rgba(0,4,12,.78))`;
+    zoomRose.style.filter=curBlur>0.4?`blur(${curBlur.toFixed(1)}px)`:'none';
     zoomRose.style.opacity='1';
 
     dateEl.style.opacity='0';
@@ -2174,82 +2215,76 @@ function updateScrollScene(){
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
     if(ceremonyEl){ceremonyEl.style.opacity='0';ceremonyEl.style.pointerEvents='none';ceremonyEl.style.clipPath='inset(0% 50% 0% 50%)';}
     if(receptionEl){receptionEl.style.opacity='0';receptionEl.style.pointerEvents='none';}
-    if(musicToggle){musicToggle.style.color='#f5d18d';}
   }
-  // Fase 3: Revelación suave de la Fecha (0.22 a 0.33)
-  else if(p<=0.33){
+  // Fase 3: Revelación suave de la Fecha (0.19 a 0.26)
+  else if(p<=0.26){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     parentsRose.style.opacity='0';
 
-    const pSettle=(p-0.22)/0.11;
+    const pSettle=(p-0.19)/0.07;
 
-    const diag=Math.hypot(window.innerWidth,window.innerHeight);
-    const roseBase=parentsRose.offsetWidth||44;
-    const maxScale=Math.max(26,(diag*1.32)/roseBase);
-    const overScale=maxScale*(1+0.28*Math.min(1,pSettle));
-    const overRot=26+Math.min(1,pSettle)*6;
-    const overBlur=18+Math.min(1,pSettle)*8;
+    const diag=Math.hypot(lastLayoutWidth,vh);
+    const maxScale=isMobile?18:Math.max(24,(diag*1.25)/cachedRoseBase);
+    const overScale=maxScale*(1+0.22*Math.min(1,pSettle));
+    const overRot=24+Math.min(1,pSettle)*6;
 
-    const roseOp=Math.max(0,1-(pSettle/0.50));
+    const roseOp=Math.max(0,1-(pSettle/0.48));
     zoomOverlay.style.opacity=roseOp>0?'1':'0';
     zoomRose.style.opacity=roseOp.toFixed(3);
-    zoomRose.style.transform=`translate3d(0,0,0) scale(${overScale.toFixed(2)}) rotate(${overRot.toFixed(1)}deg)`;
-    zoomRose.style.filter=`blur(${overBlur.toFixed(1)}px) brightness(.9) contrast(1.06) saturate(1.02)`;
+    if(roseOp>0){
+      zoomRose.style.transform=`translate3d(0,0,0) scale(${overScale.toFixed(2)}) rotate(${overRot.toFixed(1)}deg)`;
+      zoomRose.style.filter=isMobile?'blur(8px)':'blur(18px)';
+    }
 
     const dateOp=Math.min(1,pSettle*2.2);
     dateEl.style.opacity=dateOp.toFixed(3);
     dateEl.style.pointerEvents='auto';
 
-    if(dateContent)dateContent.style.opacity='1';
+    if(dateContent){dateContent.style.opacity='1';dateContent.style.filter='none';}
     if(dateFgLights)dateFgLights.style.opacity='1';
 
-    const pNum=Math.min(1,pSettle/0.44);
+    const pNum=Math.min(1,pSettle/0.46);
     const eNum=pNum*pNum*(3-2*pNum);
-    const numScale=1.38-(0.38*eNum);
-    const numBlur=(1-eNum)*10;
-    const numOp=Math.min(1,pSettle*2.8);
+    const numScale=1.32-(0.32*eNum);
+    const numOp=Math.min(1,pSettle*2.6);
     dateNum.style.transform=`scale(${numScale.toFixed(3)})`;
-    dateNum.style.filter=`blur(${numBlur.toFixed(1)}px) drop-shadow(0 16px 36px rgba(0,4,12,.92))`;
+    dateNum.style.filter='drop-shadow(0 16px 36px rgba(0,4,12,.92))';
     dateNum.style.opacity=numOp.toFixed(3);
 
-    const bgScale=1.12-(0.12*Math.min(1,pSettle/0.50));
+    const bgScale=1.10-(0.10*Math.min(1,pSettle/0.52));
     dateBg.style.transform=`scale(${bgScale.toFixed(3)})`;
 
-    const pEye=Math.max(0,Math.min(1,(pSettle-0.44)/0.24));
+    const pEye=Math.max(0,Math.min(1,(pSettle-0.42)/0.26));
     const eEye=pEye*pEye*(3-2*pEye);
-    const eyeScale=0.82+(0.18*eEye);
-    const eyeBlur=(1-eEye)*14;
-    const eyeY=(1-eEye)*-14;
+    const eyeScale=0.86+(0.14*eEye);
+    const eyeY=(1-eEye)*-12;
     dateEyebrow.style.opacity=eEye.toFixed(3);
-    dateEyebrow.style.filter=`blur(${eyeBlur.toFixed(1)}px)`;
+    dateEyebrow.style.filter='none';
     dateEyebrow.style.transform=`translate3d(0,${eyeY.toFixed(1)}px,0) scale(${eyeScale.toFixed(3)})`;
 
-    const pMonth=Math.max(0,Math.min(1,(pSettle-0.62)/0.24));
+    const pMonth=Math.max(0,Math.min(1,(pSettle-0.58)/0.26));
     const eMonth=pMonth*pMonth*(3-2*pMonth);
-    const monthScale=0.82+(0.18*eMonth);
-    const monthBlur=(1-eMonth)*16;
-    const monthY=(1-eMonth)*16;
+    const monthScale=0.86+(0.14*eMonth);
+    const monthY=(1-eMonth)*14;
     dateMonth.style.opacity=eMonth.toFixed(3);
-    dateMonth.style.filter=`blur(${monthBlur.toFixed(1)}px)`;
+    dateMonth.style.filter='none';
     dateMonth.style.transform=`translate3d(0,${monthY.toFixed(1)}px,0) scale(${monthScale.toFixed(3)})`;
 
-    const pYear=Math.max(0,Math.min(1,(pSettle-0.76)/0.22));
+    const pYear=Math.max(0,Math.min(1,(pSettle-0.74)/0.24));
     const eYear=pYear*pYear*(3-2*pYear);
-    const yearScale=0.84+(0.16*eYear);
-    const yearBlur=(1-eYear)*12;
-    const yearY=(1-eYear)*12;
+    const yearScale=0.88+(0.12*eYear);
+    const yearY=(1-eYear)*10;
     dateYear.style.opacity=eYear.toFixed(3);
-    dateYear.style.filter=`blur(${yearBlur.toFixed(1)}px)`;
+    dateYear.style.filter='none';
     dateYear.style.transform=`translate3d(0,${yearY.toFixed(1)}px,0) scale(${yearScale.toFixed(3)})`;
 
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
     if(ceremonyEl){ceremonyEl.style.opacity='0';ceremonyEl.style.pointerEvents='none';ceremonyEl.style.clipPath='inset(0% 50% 0% 50%)';}
     if(receptionEl){receptionEl.style.opacity='0';receptionEl.style.pointerEvents='none';}
-    if(musicToggle){musicToggle.style.color='#f5d18d';}
   }
-  // Fase 4: Fecha fija en contemplación tranquila (0.33 a 0.39)
-  else if(p<=0.39){
+  // Fase 4: Fecha fija en contemplación tranquila — Zona de lectura amplia (0.26 a 0.36)
+  else if(p<=0.36){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
@@ -2261,40 +2296,41 @@ function updateScrollScene(){
     if(dateFgLights)dateFgLights.style.opacity='1';
 
     dateNum.style.transform='scale(1)';
-    dateNum.style.filter='blur(0px) drop-shadow(0 16px 36px rgba(0,4,12,.92))';
+    dateNum.style.filter='drop-shadow(0 16px 36px rgba(0,4,12,.92))';
     dateNum.style.opacity='1';
     dateBg.style.transform='scale(1)';
     dateEyebrow.style.opacity='1';
-    dateEyebrow.style.filter='blur(0px)';
-    dateEyebrow.style.transform='translate3d(0, 0, 0) scale(1)';
+    dateEyebrow.style.filter='none';
+    dateEyebrow.style.transform='translate3d(0,0,0) scale(1)';
     dateMonth.style.opacity='1';
-    dateMonth.style.filter='blur(0px)';
-    dateMonth.style.transform='translate3d(0, 0, 0) scale(1)';
+    dateMonth.style.filter='none';
+    dateMonth.style.transform='translate3d(0,0,0) scale(1)';
     dateYear.style.opacity='1';
-    dateYear.style.filter='blur(0px)';
-    dateYear.style.transform='translate3d(0, 0, 0) scale(1)';
+    dateYear.style.filter='none';
+    dateYear.style.transform='translate3d(0,0,0) scale(1)';
 
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
     if(ceremonyEl){ceremonyEl.style.opacity='0';ceremonyEl.style.pointerEvents='none';ceremonyEl.style.clipPath='inset(0% 50% 0% 50%)';}
     if(receptionEl){receptionEl.style.opacity='0';receptionEl.style.pointerEvents='none';}
-    if(musicToggle){musicToggle.style.color='#f5d18d';}
   }
-  // Fase 5: LA FECHA PERMANECE FIJA EN EL FONDO Y LAS FOTOS ENTRAN CON PARALLAX (0.39 a 0.48)
-  else if(p<=0.48){
+  // Fase 5: LA FECHA PERMANECE FIJA EN EL FONDO Y LAS FOTOS ENTRAN CON PARALLAX (0.36 a 0.43)
+  else if(p<=0.43){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
+    zoomRose.style.opacity='0';
 
     dateEl.style.opacity='1';
     dateEl.style.pointerEvents='none';
+    dateBg.style.transform='scale(1)';
 
-    const pGal=(p-0.39)/0.09;
+    const pGal=(p-0.36)/0.07;
     const eGal=pGal*pGal*(3-2*pGal);
 
     const dateTextFade=Math.max(0,1-(pGal/0.45));
     if(dateContent){
       dateContent.style.opacity=dateTextFade.toFixed(3);
-      dateContent.style.filter=dateTextFade<1?`blur(${((1-dateTextFade)*8).toFixed(1)}px)`:'none';
+      dateContent.style.filter=(!isMobile&&dateTextFade<1)?`blur(${((1-dateTextFade)*6).toFixed(1)}px)`:'none';
     }
     if(dateFgLights)dateFgLights.style.opacity=dateTextFade.toFixed(3);
 
@@ -2303,30 +2339,28 @@ function updateScrollScene(){
       galSection.style.pointerEvents=pGal>0.5?'auto':'none';
     }
 
-    const startXMain=isMobile?-window.innerWidth*0.95:-240;
+    const startXMain=isMobile?-lastLayoutWidth*0.92:-240;
     const curXMain=startXMain*(1-eGal);
     const curScaleMain=1.04-(0.04*eGal);
-    const curBlurMain=(1-eGal)*8;
     const curOpMain=Math.min(1,pGal*1.8);
 
     if(galCardMain){
       galCardMain.style.transform=`translate3d(${curXMain.toFixed(1)}px,0,0) scale(${curScaleMain.toFixed(3)})`;
       galCardMain.style.opacity=curOpMain.toFixed(3);
-      galCardMain.style.filter=`blur(${curBlurMain.toFixed(1)}px)`;
+      galCardMain.style.filter='none';
     }
 
     const pSub=Math.max(0,Math.min(1,(pGal-0.08)/0.88));
     const eSub=pSub*pSub*(3-2*pSub);
-    const startXSub=isMobile?window.innerWidth*0.95:240;
+    const startXSub=isMobile?lastLayoutWidth*0.92:240;
     const curXSub=startXSub*(1-eSub);
     const curScaleSub=1.04-(0.04*eSub);
-    const curBlurSub=(1-eSub)*8;
     const curOpSub=Math.min(1,pSub*1.8);
 
     if(galCardSub){
       galCardSub.style.transform=`translate3d(${curXSub.toFixed(1)}px,0,0) scale(${curScaleSub.toFixed(3)})`;
       galCardSub.style.opacity=curOpSub.toFixed(3);
-      galCardSub.style.filter=`blur(${curBlurSub.toFixed(1)}px)`;
+      galCardSub.style.filter='none';
     }
 
     const pLine=Math.max(0,Math.min(1,(pGal-0.28)/0.65));
@@ -2346,26 +2380,27 @@ function updateScrollScene(){
     const pQuote=Math.max(0,Math.min(1,(pGal-0.42)/0.55));
     const eQuote=pQuote*pQuote*(3-2*pQuote);
     const curYQuote=14*(1-eQuote);
-    const curBlurQuote=(1-eQuote)*7;
 
     if(galQuote){
       galQuote.style.transform=`translate3d(0,${curYQuote.toFixed(1)}px,0)`;
       galQuote.style.opacity=eQuote.toFixed(3);
-      galQuote.style.filter=`blur(${curBlurQuote.toFixed(1)}px)`;
+      galQuote.style.filter='none';
     }
 
     if(ceremonyEl){ceremonyEl.style.opacity='0';ceremonyEl.style.pointerEvents='none';ceremonyEl.style.clipPath='inset(0% 50% 0% 50%)';}
     if(receptionEl){receptionEl.style.opacity='0';receptionEl.style.pointerEvents='none';}
   }
-  // Fase 6: Galería asentada y contemplativa (0.48 a 0.54)
-  else if(p<=0.54){
+  // Fase 6: Galería asentada y contemplativa — Zona de lectura amplia (0.43 a 0.53)
+  else if(p<=0.53){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
+    zoomRose.style.opacity='0';
 
     dateEl.style.opacity='1';
     dateEl.style.pointerEvents='none';
-    if(dateContent){dateContent.style.opacity='0';dateContent.style.filter='blur(8px)';}
+    dateBg.style.transform='scale(1)';
+    if(dateContent){dateContent.style.opacity='0';dateContent.style.filter='none';}
     if(dateFgLights)dateFgLights.style.opacity='0';
 
     if(galSection){
@@ -2400,14 +2435,19 @@ function updateScrollScene(){
     if(ceremonyEl){ceremonyEl.style.opacity='0';ceremonyEl.style.pointerEvents='none';ceremonyEl.style.clipPath='inset(0% 50% 0% 50%)';}
     if(receptionEl){receptionEl.style.opacity='0';receptionEl.style.pointerEvents='none';}
   }
-  // Fase 7: TRANSICIÓN APERTURA CENTRAL (PORTAL SLIT) HACIA CEREMONIA (0.54 a 0.65)
-  else if(p<=0.65){
+  // Fase 7: TRANSICIÓN APERTURA CENTRAL (PORTAL SLIT) HACIA CEREMONIA (0.53 a 0.60)
+  else if(p<=0.60){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
+    zoomRose.style.opacity='0';
 
     dateEl.style.opacity='1';
     dateEl.style.pointerEvents='none';
+    dateBg.style.transform='scale(1)';
+    if(dateContent){dateContent.style.opacity='0';dateContent.style.filter='none';}
+    if(dateFgLights)dateFgLights.style.opacity='0';
+
     if(galSection){
       galSection.style.opacity='1';
       galSection.style.pointerEvents='none';
@@ -2423,16 +2463,16 @@ function updateScrollScene(){
       galCardSub.style.filter='none';
     }
 
-    const pFadeOut=Math.min(1,(p-0.54)/0.03);
+    const pFadeOut=Math.min(1,(p-0.53)/0.025);
     const quoteOp=Math.max(0,1-pFadeOut);
     if(galQuote){
       galQuote.style.opacity=quoteOp.toFixed(3);
-      galQuote.style.filter=quoteOp<1?`blur(${((1-quoteOp)*6).toFixed(1)}px)`:'none';
+      galQuote.style.filter='none';
     }
     if(galLineTop)galLineTop.style.opacity=quoteOp.toFixed(3);
     if(galLineBottom)galLineBottom.style.opacity=quoteOp.toFixed(3);
 
-    const pSlit=Math.max(0,Math.min(1,(p-0.55)/0.10));
+    const pSlit=Math.max(0,Math.min(1,(p-0.538)/0.062));
     const eSlit=pSlit*pSlit*(3-2*pSlit);
     const insetX=(50*(1-eSlit)).toFixed(2);
 
@@ -2442,29 +2482,32 @@ function updateScrollScene(){
       ceremonyEl.style.clipPath=`inset(0% ${insetX}% 0% ${insetX}%)`;
     }
     if(ceremonyBg){
+      ceremonyBg.style.transformOrigin='';
       ceremonyBg.style.transform='scale(1)';
       ceremonyBg.style.filter='none';
     }
+    if(ceremonyShade){ceremonyShade.style.opacity='1';}
 
     if(ceremonyStaggers){
       ceremonyStaggers.forEach(el=>{
         el.style.opacity='0';
         el.style.transform='translate3d(0,14px,0)';
-        el.style.filter='blur(6px)';
+        el.style.filter='none';
       });
     }
     if(receptionEl){receptionEl.style.opacity='0';receptionEl.style.pointerEvents='none';}
   }
-  // Fase 8: Perspectiva de las bancas y entrada escalonada de iglesia (0.65 a 0.70)
-  else if(p<=0.70){
+  // Fase 8: Perspectiva de las bancas y entrada escalonada de iglesia (0.60 a 0.64)
+  else if(p<=0.64){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
+    zoomRose.style.opacity='0';
     dateEl.style.opacity='0';
     dateEl.style.pointerEvents='none';
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
 
-    const pZoom=(p-0.65)/0.05;
+    const pZoom=(p-0.60)/0.04;
     const curScale=1.00+(0.04*pZoom);
 
     if(ceremonyEl){
@@ -2473,11 +2516,13 @@ function updateScrollScene(){
       ceremonyEl.style.pointerEvents='auto';
     }
     if(ceremonyBg){
+      ceremonyBg.style.transformOrigin='';
       ceremonyBg.style.transform=`scale(${curScale.toFixed(3)})`;
       ceremonyBg.style.filter='none';
     }
+    if(ceremonyShade){ceremonyShade.style.opacity='1';}
 
-    const pContent=Math.max(0,(p-0.66)/0.04);
+    const pContent=Math.max(0,(p-0.605)/0.035);
     const eContent=pContent*pContent*(3-2*pContent);
 
     if(ceremonyStaggers){
@@ -2485,19 +2530,19 @@ function updateScrollScene(){
         const itemDelay=idx*0.14;
         const pItem=Math.max(0,Math.min(1,(eContent-itemDelay)/(1-itemDelay)));
         const itemY=(1-pItem)*14;
-        const itemBlur=(1-pItem)*6;
         el.style.opacity=pItem.toFixed(3);
         el.style.transform=`translate3d(0,${itemY.toFixed(1)}px,0)`;
-        el.style.filter=pItem<1?`blur(${itemBlur.toFixed(1)}px)`:'none';
+        el.style.filter='none';
       });
     }
     if(receptionEl){receptionEl.style.opacity='0';receptionEl.style.pointerEvents='none';}
   }
-  // Fase 9: Contemplación y lectura tranquila de la Ceremonia (0.65 a 0.73)
-  else if(p<=0.73){
+  // Fase 9: Contemplación y lectura tranquila de la Ceremonia — Zona de lectura amplia (0.64 a 0.74)
+  else if(p<=0.74){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
+    zoomRose.style.opacity='0';
     dateEl.style.opacity='0';
     dateEl.style.pointerEvents='none';
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
@@ -2508,6 +2553,7 @@ function updateScrollScene(){
       ceremonyEl.style.pointerEvents='auto';
     }
     if(ceremonyBg){
+      ceremonyBg.style.transformOrigin='';
       ceremonyBg.style.transform='scale(1.04)';
       ceremonyBg.style.filter='none';
     }
@@ -2520,14 +2566,14 @@ function updateScrollScene(){
     }
     if(ceremonyShade){ceremonyShade.style.opacity='1';}
     if(receptionEl){receptionEl.style.opacity='0';receptionEl.style.pointerEvents='none';}
-    if(closingEl){closingEl.style.opacity='0';closingEl.style.pointerEvents='none';}
   }
-  // Fase 10: Transición Ceremonia -> Celebración: Desvanecimiento de textos y acercamiento floral (0.73 a 0.77)
+  // Fase 10: Transición Ceremonia -> Celebración: Desvanecimiento de textos y acercamiento floral (0.74 a 0.77)
   else if(p<=0.77){
-    if(flowSticky) flowSticky.style.backgroundColor='';
+    if(flowSticky)flowSticky.style.backgroundColor='';
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
+    zoomRose.style.opacity='0';
     dateEl.style.opacity='0';
     dateEl.style.pointerEvents='none';
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
@@ -2538,24 +2584,22 @@ function updateScrollScene(){
       ceremonyEl.style.pointerEvents='none';
     }
 
-    // 1. Textos y botón de la iglesia se desvanecen suavemente mientras la foto permanece fija
-    const pTextOut=Math.min(1,(p-0.73)/0.02);
+    const pTextOut=Math.min(1,(p-0.74)/0.015);
     const churchTextOp=Math.max(0,1-pTextOut);
     if(ceremonyStaggers){
       ceremonyStaggers.forEach(el=>{
         el.style.opacity=churchTextOp.toFixed(3);
-        el.style.filter=churchTextOp<1?`blur(${((1-churchTextOp)*6).toFixed(1)}px)`:'none';
+        el.style.filter='none';
       });
     }
     if(ceremonyShade){
       ceremonyShade.style.opacity=churchTextOp.toFixed(3);
     }
 
-    // 2. Acercamiento sutil al arreglo floral de la iglesia y suavizado progresivo de enfoque
-    const pFloralZoom=Math.max(0,(p-0.74)/0.03);
+    const pFloralZoom=Math.max(0,(p-0.745)/0.025);
     const eFloralZoom=pFloralZoom*pFloralZoom*(3-2*pFloralZoom);
     const churchScale=1.04+(0.11*eFloralZoom);
-    const churchBlur=eFloralZoom*4.5;
+    const churchBlur=isMobile?0:eFloralZoom*4.0;
 
     if(ceremonyBg){
       ceremonyBg.style.transformOrigin=isMobile?'35% 28%':'30% 38%';
@@ -2567,29 +2611,29 @@ function updateScrollScene(){
       receptionEl.style.opacity='0';
       receptionEl.style.pointerEvents='none';
     }
-    if(receptionBgWrap && isMobile){
+    if(receptionBgWrap&&isMobile){
       receptionBgWrap.style.height='100%';
       receptionBgWrap.style.webkitMaskImage='none';
       receptionBgWrap.style.maskImage='none';
     }
-    if(closingEl){closingEl.style.opacity='0';closingEl.style.pointerEvents='none';}
   }
-  // Fase 11: Match Dissolve floral cruzado entre iglesia y recepción (0.77 a 0.82)
-  else if(p<=0.82){
-    if(flowSticky) flowSticky.style.backgroundColor='#fbf8f2';
+  // Fase 11: Match Dissolve floral cruzado entre iglesia y recepción (0.77 a 0.81)
+  else if(p<=0.81){
+    if(flowSticky)flowSticky.style.backgroundColor='#fbf8f2';
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
+    zoomRose.style.opacity='0';
     dateEl.style.opacity='0';
     dateEl.style.pointerEvents='none';
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
 
-    const pCross=(p-0.77)/0.05;
+    const pCross=(p-0.77)/0.04;
     const eCross=pCross*pCross*(3-2*pCross);
 
-    // Durante el fundido, la iglesia se mantiene como base 100% opaca debajo para evitar fondos oscuros o tonos grisáceos
     if(ceremonyEl){
       ceremonyEl.style.opacity='1';
+      ceremonyEl.style.clipPath='inset(0% 0% 0% 0%)';
       ceremonyEl.style.pointerEvents='none';
     }
     if(ceremonyShade){
@@ -2598,22 +2642,23 @@ function updateScrollScene(){
     if(ceremonyBg){
       ceremonyBg.style.transformOrigin=isMobile?'35% 28%':'30% 38%';
       ceremonyBg.style.transform='scale(1.15)';
-      ceremonyBg.style.filter='blur(4px)';
+      ceremonyBg.style.filter=isMobile?'none':'blur(4px)';
     }
 
-    // Imagen de la recepción aparece en match-dissolve progresivo sobre el arreglo floral
     if(receptionEl){
       receptionEl.style.opacity=eCross.toFixed(3);
+      receptionEl.style.transform='translate3d(0,0,0)';
+      receptionEl.style.filter='none';
       receptionEl.style.pointerEvents='none';
     }
-    if(receptionBgWrap && isMobile){
+    if(receptionBgWrap&&isMobile){
       receptionBgWrap.style.height='100%';
       receptionBgWrap.style.webkitMaskImage='none';
       receptionBgWrap.style.maskImage='none';
     }
     if(receptionBg){
       const recScale=1.18-(0.10*eCross);
-      const recBlur=4.5*(1-eCross);
+      const recBlur=isMobile?0:4.0*(1-eCross);
       receptionBg.style.transformOrigin=isMobile?'56% 32%':'50% 30%';
       receptionBg.style.transform=`scale(${recScale.toFixed(3)})`;
       receptionBg.style.filter=recBlur>0.2?`blur(${recBlur.toFixed(1)}px)`:'none';
@@ -2623,16 +2668,16 @@ function updateScrollScene(){
       receptionStaggers.forEach(el=>{
         el.style.opacity='0';
         el.style.transform='translate3d(0,16px,0)';
-        el.style.filter='blur(6px)';
+        el.style.filter='none';
       });
     }
-    if(closingEl){closingEl.style.opacity='0';closingEl.style.pointerEvents='none';}
   }
-  // Fase 12: Recuperación de nitidez, alejamiento a escala natural y revelación de "La celebración" (0.82 a 0.86)
-  else if(p<=0.86){
+  // Fase 12: Recuperación de nitidez, alejamiento a escala natural y revelación de "La celebración" (0.81 a 0.84)
+  else if(p<=0.84){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
+    zoomRose.style.opacity='0';
     dateEl.style.opacity='0';
     dateEl.style.pointerEvents='none';
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
@@ -2640,27 +2685,27 @@ function updateScrollScene(){
 
     if(receptionEl){
       receptionEl.style.opacity='1';
-      receptionEl.style.pointerEvents='none';
+      receptionEl.style.transform='translate3d(0,0,0)';
+      receptionEl.style.filter='none';
+      receptionEl.style.pointerEvents='auto';
     }
-    if(receptionBgWrap && isMobile){
+    if(receptionBgWrap&&isMobile){
       receptionBgWrap.style.height='48svh';
       receptionBgWrap.style.webkitMaskImage='';
       receptionBgWrap.style.maskImage='';
     }
 
-    const pSettle=(p-0.82)/0.04;
+    const pSettle=(p-0.81)/0.03;
     const eSettle=pSettle*pSettle*(3-2*pSettle);
     const recScale=1.08-(0.08*eSettle);
-    const recBlur=(1-eSettle)*2;
 
     if(receptionBg){
       receptionBg.style.transformOrigin=isMobile?'56% 32%':'50% 30%';
       receptionBg.style.transform=`scale(${recScale.toFixed(3)})`;
-      receptionBg.style.filter=recBlur>0.2?`blur(${recBlur.toFixed(1)}px)`:'none';
+      receptionBg.style.filter='none';
     }
 
-    // Entrada escalonada de "La celebración" y datos del salón
-    const pTitle=Math.max(0,(p-0.83)/0.03);
+    const pTitle=Math.max(0,(p-0.815)/0.025);
     const eTitle=pTitle*pTitle*(3-2*pTitle);
 
     if(receptionStaggers){
@@ -2668,26 +2713,25 @@ function updateScrollScene(){
         const itemDelay=idx*0.12;
         const pItem=Math.max(0,Math.min(1,(eTitle-itemDelay)/(1-itemDelay)));
         const itemY=(1-pItem)*14;
-        const itemBlur=(1-pItem)*5;
         el.style.opacity=pItem.toFixed(3);
         el.style.transform=`translate3d(0,${itemY.toFixed(1)}px,0)`;
-        el.style.filter=pItem<1?`blur(${itemBlur.toFixed(1)}px)`:'none';
+        el.style.filter='none';
       });
     }
 
-    if(receptionContent && isMobile){
+    if(receptionContent&&isMobile){
       receptionContent.style.setProperty('--rec-shift-y','0px');
     }
-    if(receptionBgWrap && isMobile){
+    if(receptionBgWrap&&isMobile){
       receptionBgWrap.style.setProperty('--rec-bg-y','0px');
     }
-    if(closingEl){closingEl.style.opacity='0';closingEl.style.pointerEvents='none';}
   }
-  // Fase 13: RECEPCIÓN ASENTADA Y LECTURA CÓMODA DEL SALÓN Y PROGRAMA (0.86 a 0.91)
-  else if(p<=0.91){
+  // Fase 13: RECEPCIÓN ASENTADA Y LECTURA CÓMODA DEL SALÓN Y PROGRAMA — Zona de lectura amplia (0.84 a 0.93)
+  else if(p<=0.93){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
+    zoomRose.style.opacity='0';
     dateEl.style.opacity='0';
     dateEl.style.pointerEvents='none';
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
@@ -2698,6 +2742,11 @@ function updateScrollScene(){
       receptionEl.style.pointerEvents='auto';
       receptionEl.style.transform='translate3d(0,0,0)';
       receptionEl.style.filter='none';
+    }
+    if(receptionBgWrap&&isMobile){
+      receptionBgWrap.style.height='48svh';
+      receptionBgWrap.style.webkitMaskImage='';
+      receptionBgWrap.style.maskImage='';
     }
     if(receptionBg){
       receptionBg.style.transform='scale(1)';
@@ -2712,52 +2761,49 @@ function updateScrollScene(){
       });
     }
 
-    // En móvil, conforme el scroll avanza tranquilamente a través del programa
-    if(receptionContent && isMobile){
-      const pScrollContent=(p-0.86)/0.05;
-      const shiftY=-5 * pScrollContent * (vh/100);
-      const bgY=-4 * pScrollContent * (vh/100);
+    if(receptionContent&&isMobile){
+      const pScrollContent=(p-0.84)/0.09;
+      const shiftY=-5*pScrollContent*(vh/100);
+      const bgY=-4*pScrollContent*(vh/100);
       receptionContent.style.setProperty('--rec-shift-y',`${shiftY.toFixed(1)}px`);
-      if(receptionBgWrap) receptionBgWrap.style.setProperty('--rec-bg-y',`${bgY.toFixed(1)}px`);
+      if(receptionBgWrap)receptionBgWrap.style.setProperty('--rec-bg-y',`${bgY.toFixed(1)}px`);
     }
-
-    if(closingEl){
-      closingEl.style.opacity='0';
-      closingEl.style.pointerEvents='none';
-      closingEl.classList.remove('is-revealed');
-    }
-    if(musicToggle) musicToggle.style.color='#122135';
   }
-  // Fase 14: TRANSICIÓN SEDOSA Y CONTINUA: RECEPCIÓN -> LLUVIA DE SOBRES (0.91 a 0.965)
+  // Fase 14: TRANSICIÓN SEDOSA Y CONTINUA: RECEPCIÓN -> LLUVIA DE SOBRES (0.93 a 0.965)
   else if(p<=0.965){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
+    zoomRose.style.opacity='0';
     dateEl.style.opacity='0';
     dateEl.style.pointerEvents='none';
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
     if(ceremonyEl){ceremonyEl.style.opacity='0';ceremonyEl.style.pointerEvents='none';}
 
-    const pTrans=(p-0.91)/0.055;
+    if(receptionBgWrap&&isMobile){
+      receptionBgWrap.style.height='48svh';
+      receptionBgWrap.style.webkitMaskImage='';
+      receptionBgWrap.style.maskImage='';
+    }
+
+    const pTrans=(p-0.93)/0.035;
     const eTrans=pTrans*pTrans*(3-2*pTrans);
 
     if(receptionEl){
       const recOp=Math.max(0,1-eTrans);
       const recY=-24*eTrans;
-      const recBlur=eTrans*3;
       receptionEl.style.opacity=recOp.toFixed(3);
       receptionEl.style.transform=`translate3d(0,${recY.toFixed(1)}px,0)`;
-      receptionEl.style.filter=recBlur>0.2?`blur(${recBlur.toFixed(1)}px)`:'none';
+      receptionEl.style.filter='none';
       receptionEl.style.pointerEvents=recOp>0.45?'auto':'none';
     }
 
     if(closingEl){
       const closeOp=eTrans;
       const closeY=20*(1-eTrans);
-      const closeBlur=3*(1-eTrans);
       closingEl.style.opacity=closeOp.toFixed(3);
       closingEl.style.transform=`translate3d(0,${closeY.toFixed(1)}px,0)`;
-      closingEl.style.filter=closeBlur>0.2?`blur(${closeBlur.toFixed(1)}px)`:'none';
+      closingEl.style.filter='none';
       closingEl.style.pointerEvents=eTrans>0.35?'auto':'none';
 
       if(eTrans>0.25){
@@ -2766,13 +2812,13 @@ function updateScrollScene(){
         closingEl.classList.remove('is-revealed');
       }
     }
-    if(musicToggle) musicToggle.style.color='#122135';
   }
   // Fase 15: CIERRE COMPLETAMENTE ASENTADO (0.965 a 1.00)
   else{
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
+    zoomRose.style.opacity='0';
     dateEl.style.opacity='0';
     dateEl.style.pointerEvents='none';
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
@@ -2781,7 +2827,7 @@ function updateScrollScene(){
     if(receptionEl){
       receptionEl.style.opacity='0';
       receptionEl.style.transform='translate3d(0,-24px,0)';
-      receptionEl.style.filter='blur(3px)';
+      receptionEl.style.filter='none';
       receptionEl.style.pointerEvents='none';
     }
 
@@ -2792,11 +2838,9 @@ function updateScrollScene(){
       closingEl.style.pointerEvents='auto';
       closingEl.classList.add('is-revealed');
     }
-    if(musicToggle) musicToggle.style.color='#122135';
   }
 }
-addEventListener('scroll',updateScrollScene,{passive:true});
-document.body.addEventListener('scroll',updateScrollScene,{passive:true});
+addEventListener('scroll',scheduleScrollScene,{passive:true});
 
 function triggerCoverTransition(){
   if(coverState!=='cover')return;
@@ -2814,25 +2858,22 @@ function triggerCoverTransition(){
     startTypewriter(true);
     coverState='opened';
     lastScrolledDownTime=performance.now();
+    updateLayoutMetrics(true);
     updateScrollScene();
   }else{
     zoomTimer=setTimeout(()=>{
       window.scrollTo({top:0,behavior:'instant'});
+      document.documentElement.classList.add('is-unlocked');
       bflyImg.src='assets/mariposa.webp?t='+Date.now();
       storyFlow.classList.add('is-visible');
       welcomeEl.classList.add('is-visible');
       sceneEl.classList.add('is-gone');
       startTypewriter(false);
-      updateScrollScene();
-    },1200);
-    // Desbloquea el scroll únicamente cuando el zoom de entrada ha concluido por completo
-    unlockTimer=setTimeout(()=>{
-      window.scrollTo({top:0,behavior:'instant'});
-      document.documentElement.classList.add('is-unlocked');
       coverState='opened';
       lastScrolledDownTime=performance.now();
+      updateLayoutMetrics(true);
       updateScrollScene();
-    },2650);
+    },1200);
   }
 }
 
@@ -2899,11 +2940,6 @@ function returnToCover(){
   void sceneEl.offsetWidth;
   shine.style.display='';
   sceneEl.querySelectorAll('.backplane,.foreground,.reveal,.music-toggle').forEach(e=>e.style.animation='');
-  const galCardMain=document.querySelector('.gallery-card-main');
-  const galCardSub=document.querySelector('.gallery-card-sub');
-  const galLineTop=document.querySelector('.gallery-axis-line.line-top');
-  const galLineBottom=document.querySelector('.gallery-axis-line.line-bottom');
-  const galQuote=document.querySelector('.gallery-quote');
   if(galCardMain){galCardMain.style.transform='';galCardMain.style.opacity='';galCardMain.style.filter='';}
   if(galCardSub){galCardSub.style.transform='';galCardSub.style.opacity='';galCardSub.style.filter='';}
   if(galLineTop){galLineTop.style.transform='';galLineTop.style.opacity='';}
@@ -2930,8 +2966,8 @@ addEventListener('wheel',e=>{
   }else if(coverState==='zooming-in'||coverState==='zooming-out'){
     e.preventDefault();
   }else if(coverState==='opened'){
-    const sy=window.scrollY||document.documentElement.scrollTop||document.body.scrollTop||0;
-    if(sy<=2&&e.deltaY<-14&&(performance.now()-lastScrolledDownTime)>380){
+    const sy=window.pageYOffset||document.documentElement.scrollTop||0;
+    if(sy<=2&&e.deltaY<-24&&(performance.now()-lastScrolledDownTime)>500){
       e.preventDefault();
       returnToCover();
     }
@@ -2941,8 +2977,8 @@ addEventListener('wheel',e=>{
 addEventListener('touchstart',e=>{
   if(e.touches.length===1){
     touchStartY=e.touches[0].clientY;
-    const sy=window.scrollY||document.documentElement.scrollTop||document.body.scrollTop||0;
-    touchStartedAtTop=(sy<=2&&(performance.now()-lastScrolledDownTime)>300);
+    const sy=window.pageYOffset||document.documentElement.scrollTop||0;
+    touchStartedAtTop=(sy<=2&&(performance.now()-lastScrolledDownTime)>600);
   }
 },{passive:true});
 
@@ -2951,7 +2987,7 @@ addEventListener('touchmove',e=>{
   const dy=touchStartY-e.touches[0].clientY;
   if(coverState==='cover'&&dy>18){
     triggerCoverTransition();
-  }else if(coverState==='opened'&&touchStartedAtTop&&dy<-28){
+  }else if(coverState==='opened'&&touchStartedAtTop&&dy<-85){
     returnToCover();
   }
 },{passive:true});
@@ -2965,8 +3001,8 @@ addEventListener('keydown',e=>{
       e.preventDefault();
     }
   }else if(coverState==='opened'&&(e.key==='ArrowUp'||e.key==='PageUp')){
-    const sy=window.scrollY||document.documentElement.scrollTop||document.body.scrollTop||0;
-    if(sy<=2&&(performance.now()-lastScrolledDownTime)>350){
+    const sy=window.pageYOffset||document.documentElement.scrollTop||0;
+    if(sy<=2&&(performance.now()-lastScrolledDownTime)>500){
       e.preventDefault();
       returnToCover();
     }
@@ -3094,10 +3130,12 @@ function navigateToSection(section){
     bflyImg.src='assets/mariposa.webp?t='+Date.now();
     startTypewriter(true);
     coverState='opened';
+    updateLayoutMetrics(true);
   }
 
-  const vh=window.innerHeight||1;
-  const totalTrack=flowEl.offsetHeight-vh;
+  const vh=stableVh||window.innerHeight||1;
+  const totalTrack=Math.max(1,(cachedFlowHeight||flowEl.offsetHeight)-vh);
+  const flowTop=cachedFlowTop||flowEl.offsetTop;
   let targetY=0;
 
   switch(section){
@@ -3105,22 +3143,22 @@ function navigateToSection(section){
       targetY=0;
       break;
     case 'padres':
-      targetY=flowEl.offsetTop+totalTrack*0.06;
+      targetY=flowTop+totalTrack*0.06;
       break;
     case 'fecha':
-      targetY=flowEl.offsetTop+totalTrack*0.28;
+      targetY=flowTop+totalTrack*0.30;
       break;
     case 'galeria':
-      targetY=flowEl.offsetTop+totalTrack*0.51;
+      targetY=flowTop+totalTrack*0.47;
       break;
     case 'ceremonia':
-      targetY=flowEl.offsetTop+totalTrack*0.69;
+      targetY=flowTop+totalTrack*0.68;
       break;
     case 'recepcion':
-      targetY=flowEl.offsetTop+totalTrack*0.88;
+      targetY=flowTop+totalTrack*0.87;
       break;
     case 'cierre':
-      targetY=flowEl.offsetTop+totalTrack*1.0;
+      targetY=flowTop+totalTrack*0.99;
       break;
   }
 
@@ -3139,7 +3177,13 @@ const sceneImages=Array.from(document.querySelectorAll('.scene img'));
 Promise.all(sceneImages.map(im=>im.decode?im.decode().catch(()=>{}):Promise.resolve())).finally(()=>document.body.classList.remove('loading'));
 setTimeout(()=>document.body.classList.remove('loading'),1200);
 const lights=document.querySelector('.lights'),bg=document.querySelector('.background');
-function placeLights(){
+function placeLights(force){
+  const curW=window.innerWidth||1;
+  // En móvil, ignorar eventos resize provocados únicamente por la barra de direcciones (cuando el ancho no cambia)
+  if(force!==true&&Math.abs(curW-lastLayoutWidth)<=2&&lights.children.length>0){
+    return;
+  }
+  updateLayoutMetrics(true);
   const wide=matchMedia('(min-aspect-ratio:1/1)').matches;
   const points=wide?[[.227,.093],[.117,.264],[.231,.226],[.257,.309],[.763,.118],[.851,.195],[.872,.293],[.89,.244],[.046,.49,1],[.035,.554,1],[.107,.583,1],[.269,.644,1],[.908,.567,1],[.954,.505,1],[.97,.564,1],[.727,.65,1]]:[[.31,.244],[.791,.093],[.7,.163],[.75,.21],[.919,.337],[.946,.279],[.1,.521,1],[.071,.595,1],[.278,.714,1],[.921,.536,1],[.904,.634,1],[.769,.688,1]];
   const w=lights.clientWidth,h=lights.clientHeight,iw=wide?1672:1024,ih=wide?941:1536,k=Math.max(w/iw,h/ih),ox=(w-iw*k)/2,oy=(h-ih*k)/2;
@@ -3167,7 +3211,9 @@ function placeLights(){
   });
   updateScrollScene();
 }
-addEventListener('resize',placeLights);placeLights();
+addEventListener('resize',()=>placeLights(false));
+addEventListener('orientationchange',()=>setTimeout(()=>placeLights(true),150));
+placeLights(true);
 
 const urlParams=new URLSearchParams(location.search);
 if(urlParams.get('view')==='recepcion'||location.hash==='#recepcion'){
@@ -3176,9 +3222,9 @@ if(urlParams.get('view')==='recepcion'||location.hash==='#recepcion'){
   storyFlow.classList.add('is-visible');
   coverState='opened';
   setTimeout(()=>{
-    const vh=window.innerHeight;
-    const totalTrack=flowEl.offsetHeight-vh;
-    const target=flowEl.offsetTop+totalTrack*0.90;
+    updateLayoutMetrics(true);
+    const totalTrack=cachedFlowHeight-stableVh;
+    const target=cachedFlowTop+totalTrack*0.87;
     window.scrollTo({top:target,behavior:'instant'});
     updateScrollScene();
   },120);
@@ -3189,12 +3235,12 @@ if(urlParams.get('view')==='cierre'||location.hash==='#cierre'){
   storyFlow.classList.add('is-visible');
   coverState='opened';
   setTimeout(()=>{
-    const vh=window.innerHeight;
-    const totalTrack=flowEl.offsetHeight-vh;
-    const target=flowEl.offsetTop+totalTrack*1.0;
+    updateLayoutMetrics(true);
+    const totalTrack=cachedFlowHeight-stableVh;
+    const target=cachedFlowTop+totalTrack*0.99;
     window.scrollTo({top:target,behavior:'instant'});
     updateScrollScene();
-    if(closingEl) closingEl.classList.add('is-revealed');
+    if(closingEl)closingEl.classList.add('is-revealed');
   },120);
 }
 if(urlParams.get('view')==='ceremonia'||location.hash==='#ceremonia'){
@@ -3203,9 +3249,9 @@ if(urlParams.get('view')==='ceremonia'||location.hash==='#ceremonia'){
   storyFlow.classList.add('is-visible');
   coverState='opened';
   setTimeout(()=>{
-    const vh=window.innerHeight;
-    const totalTrack=flowEl.offsetHeight-vh;
-    const target=flowEl.offsetTop+totalTrack*0.70;
+    updateLayoutMetrics(true);
+    const totalTrack=cachedFlowHeight-stableVh;
+    const target=cachedFlowTop+totalTrack*0.68;
     window.scrollTo({top:target,behavior:'instant'});
     updateScrollScene();
   },120);
@@ -3216,9 +3262,9 @@ if(urlParams.get('view')==='galeria'||location.hash==='#galeria'){
   storyFlow.classList.add('is-visible');
   coverState='opened';
   setTimeout(()=>{
-    const vh=window.innerHeight;
-    const totalTrack=flowEl.offsetHeight-vh;
-    const target=flowEl.offsetTop+totalTrack*0.51;
+    updateLayoutMetrics(true);
+    const totalTrack=cachedFlowHeight-stableVh;
+    const target=cachedFlowTop+totalTrack*0.47;
     window.scrollTo({top:target,behavior:'instant'});
     updateScrollScene();
   },120);
@@ -3229,9 +3275,9 @@ if(urlParams.get('view')==='fecha'||location.hash==='#fecha'){
   storyFlow.classList.add('is-visible');
   coverState='opened';
   setTimeout(()=>{
-    const vh=window.innerHeight;
-    const totalTrack=flowEl.offsetHeight-vh;
-    const target=flowEl.offsetTop+totalTrack*0.36;
+    updateLayoutMetrics(true);
+    const totalTrack=cachedFlowHeight-stableVh;
+    const target=cachedFlowTop+totalTrack*0.30;
     window.scrollTo({top:target,behavior:'instant'});
     updateScrollScene();
   },120);
