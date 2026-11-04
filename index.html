@@ -45,6 +45,10 @@ html.is-unlocked main{overflow:visible}
   user-select:none;
   filter:drop-shadow(0 2px 8px rgba(0,4,12,0.85));
 }
+.music-toggle:focus-visible,.nav-toggle:focus-visible{
+  outline:2px solid #f4d49c;
+  outline-offset:4px;
+}
 /* En portada: centrado en la parte inferior sustituyendo exactamente a DESLIZA */
 body:not(.is-browsing) .music-toggle,
 html:not(.is-unlocked) .music-toggle{
@@ -1203,6 +1207,7 @@ html.is-unlocked .music-toggle{
   .zoom-rose-overlay{display:none!important}
   .date-num,.date-bg,.date-eyebrow,.date-month,.date-year{transform:none!important;filter:none!important;opacity:1!important}
   .parent-stagger{opacity:1!important;transform:none!important;filter:none!important;animation:none!important}
+  .stagger-item,.msg-line,.welcome-date,.welcome h2,.welcome time{opacity:1!important;transform:none!important;filter:none!important;animation:none!important}
   .gallery-card,.gallery-quote,.gallery-axis-line,.gallery-img{opacity:1!important;transform:none!important;filter:none!important;transition:none!important}
 }
 
@@ -2076,6 +2081,10 @@ function updateLayoutMetrics(forceHeight){
   cachedFlowHeight=flowEl.offsetHeight||stableVh*18;
   if(parentsRose){
     cachedRoseBase=parentsRose.offsetWidth||44;
+    const rRect=parentsRose.getBoundingClientRect();
+    const sRect=flowSticky?flowSticky.getBoundingClientRect():{top:0,height:stableVh};
+    const roseCenterY=rRect.top+(rRect.height/2)-sRect.top;
+    cachedRoseStartY=roseCenterY-(stableVh/2);
   }
 }
 
@@ -2161,10 +2170,48 @@ function updateScrollScene(){
   }
 
   // Garantía de limpieza de Cierre cuando estamos antes de la transición final (evita bloqueo al saltar desde el menú o hacer scroll rápido hacia arriba)
-  if(p<=0.93&&closingEl){
+  if(p<=0.935&&closingEl){
     closingEl.style.opacity='0';
     closingEl.style.pointerEvents='none';
+    closingEl.style.transform='translate3d(0,20px,0)';
     closingEl.classList.remove('is-revealed');
+  }
+
+  // Garantía de limpieza de Recepción cuando estamos antes de su entrada (fase de ceremonia o anterior)
+  if(p<0.77){
+    if(receptionEl){
+      receptionEl.style.opacity='0';
+      receptionEl.style.pointerEvents='none';
+      receptionEl.style.transform='translate3d(0,0,0)';
+    }
+    if(receptionContent&&isMobile){
+      receptionContent.style.setProperty('--rec-shift-y','0px');
+    }
+    if(receptionBgWrap&&isMobile){
+      receptionBgWrap.style.setProperty('--rec-bg-y','0px');
+    }
+    if(receptionImgShade){
+      receptionImgShade.style.opacity='0';
+    }
+  }
+
+  // Garantía de limpieza de Ceremonia cuando estamos fuera de su rango (antes de 0.53 o después de 0.81)
+  if((p<0.53||p>0.81)&&ceremonyEl){
+    ceremonyEl.style.opacity='0';
+    ceremonyEl.style.pointerEvents='none';
+    ceremonyEl.style.clipPath='inset(0% 50% 0% 50%)';
+  }
+
+  // Garantía de limpieza de Galería cuando estamos fuera de su rango (antes de 0.36 o después de 0.60)
+  if((p<0.36||p>0.60)&&galSection){
+    galSection.style.opacity='0';
+    galSection.style.pointerEvents='none';
+  }
+
+  // Garantía de limpieza de Fecha cuando estamos antes de 0.19 o después de 0.43
+  if((p<0.19||p>0.43)&&dateEl){
+    dateEl.style.opacity='0';
+    dateEl.style.pointerEvents='none';
   }
 
   // Fase 1: Padres visibles y activos — Zona de lectura amplia (0.00 a 0.13)
@@ -2201,10 +2248,12 @@ function updateScrollScene(){
     const curY=cachedRoseStartY*(1-ez);
     const curScale=1+(maxScale-1)*Math.pow(ez,2.1);
     const curRot=ez*24;
-    const curBlur=isMobile?Math.pow(ez,2.2)*8:Math.pow(ez,2.2)*16;
+    // Conservar la rosa completamente nítida durante el acercamiento para máxima textura
+    const pEndBlur=Math.max(0,(ez-0.75)/0.25);
+    const curBlur=pEndBlur*3.0;
 
     zoomRose.style.transform=`translate3d(0,${curY.toFixed(1)}px,0) scale(${curScale.toFixed(2)}) rotate(${curRot.toFixed(1)}deg)`;
-    zoomRose.style.filter=curBlur>0.4?`blur(${curBlur.toFixed(1)}px)`:'none';
+    zoomRose.style.filter=curBlur>0.3?`blur(${curBlur.toFixed(1)}px)`:'none';
     zoomRose.style.opacity='1';
 
     dateEl.style.opacity='0';
@@ -2235,7 +2284,7 @@ function updateScrollScene(){
     zoomRose.style.opacity=roseOp.toFixed(3);
     if(roseOp>0){
       zoomRose.style.transform=`translate3d(0,0,0) scale(${overScale.toFixed(2)}) rotate(${overRot.toFixed(1)}deg)`;
-      zoomRose.style.filter=isMobile?'blur(8px)':'blur(18px)';
+      zoomRose.style.filter='none';
     }
 
     const dateOp=Math.min(1,pSettle*2.2);
@@ -2872,7 +2921,7 @@ function triggerCoverTransition(){
   sceneEl.classList.add('is-discovering');
   if(reduced){
     document.documentElement.classList.add('is-unlocked');
-    bflyImg.src='assets/mariposa.webp?t='+Date.now();
+    bflyImg.src='assets/mariposa.webp';
     sceneEl.classList.add('is-gone');
     storyFlow.classList.add('is-visible');
     welcomeEl.classList.add('is-visible');
@@ -2885,7 +2934,7 @@ function triggerCoverTransition(){
     zoomTimer=setTimeout(()=>{
       window.scrollTo({top:0,behavior:'instant'});
       document.documentElement.classList.add('is-unlocked');
-      bflyImg.src='assets/mariposa.webp?t='+Date.now();
+      bflyImg.src='assets/mariposa.webp';
       storyFlow.classList.add('is-visible');
       welcomeEl.classList.add('is-visible');
       sceneEl.classList.add('is-gone');
@@ -3033,7 +3082,8 @@ addEventListener('keydown',e=>{
 // CONTROL DE MÚSICA Y REPRODUCCIÓN AUTOMÁTICA EN PRIMER SCROLL / GESTO
 const bgMusic=document.getElementById('bg-music');
 const musicToggle=document.getElementById('music-toggle');
-let initialAudioTriggered=false;
+let userManuallyPaused=false;
+let gestureListenersAttached=true;
 
 function setMusicUI(playing){
   if(!musicToggle)return;
@@ -3048,12 +3098,22 @@ function setMusicUI(playing){
   }
 }
 
+function removeGestureListeners(){
+  if(gestureListenersAttached){
+    gestureListenersAttached=false;
+    ['wheel','touchstart','touchmove','scroll','click','keydown'].forEach(evt=>{
+      window.removeEventListener(evt,triggerPlayOnFirstGesture);
+    });
+  }
+}
+
 function playAudio(){
   if(!bgMusic)return;
   const p=bgMusic.play();
   if(p!==undefined){
     p.then(()=>{
       setMusicUI(true);
+      removeGestureListeners();
     }).catch(()=>{
       setMusicUI(false);
     });
@@ -3069,20 +3129,20 @@ function pauseAudio(){
 function toggleAudio(){
   if(!bgMusic)return;
   if(bgMusic.paused){
+    userManuallyPaused=false;
     playAudio();
   }else{
+    userManuallyPaused=true;
     pauseAudio();
   }
 }
 
-function triggerPlayOnFirstGesture(){
-  if(!initialAudioTriggered){
-    initialAudioTriggered=true;
-    playAudio();
-    ['wheel','touchstart','touchmove','scroll','click','keydown'].forEach(evt=>{
-      window.removeEventListener(evt,triggerPlayOnFirstGesture);
-    });
-  }
+function triggerPlayOnFirstGesture(e){
+  // Si el usuario pausó intencionalmente, no reanudar con scroll o gestos
+  if(userManuallyPaused)return;
+  // Si el clic proviene directamente del botón de música, toggleAudio se encargará
+  if(e&&e.target&&e.target.closest('#music-toggle'))return;
+  playAudio();
 }
 
 // Escuchar el primer gesto del usuario (scroll, rueda, toque, click) para iniciar la canción
@@ -3093,7 +3153,6 @@ function triggerPlayOnFirstGesture(){
 if(musicToggle){
   musicToggle.addEventListener('click',e=>{
     e.stopPropagation();
-    triggerPlayOnFirstGesture();
     toggleAudio();
   });
 }
@@ -3117,6 +3176,7 @@ function closeNavMenu(){
   navToggle.setAttribute('aria-expanded','false');
   navOverlay.classList.remove('is-open');
   navOverlay.setAttribute('aria-hidden','true');
+  navToggle.focus();
 }
 
 if(navToggle){
@@ -3134,6 +3194,13 @@ if(navBackdrop){
   navBackdrop.addEventListener('click',closeNavMenu);
 }
 
+// Accesibilidad: cerrar menú con Escape
+window.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&navOverlay&&navOverlay.classList.contains('is-open')){
+    closeNavMenu();
+  }
+});
+
 function navigateToSection(section){
   triggerPlayOnFirstGesture();
   if(section==='portada'){
@@ -3148,7 +3215,7 @@ function navigateToSection(section){
     sceneEl.classList.add('is-gone');
     storyFlow.classList.add('is-visible');
     welcomeEl.classList.add('is-visible');
-    bflyImg.src='assets/mariposa.webp?t='+Date.now();
+    bflyImg.src='assets/mariposa.webp';
     startTypewriter(true);
     coverState='opened';
     updateLayoutMetrics(true);
