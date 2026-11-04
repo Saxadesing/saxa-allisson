@@ -2084,18 +2084,13 @@ function updateLayoutMetrics(forceHeight){
   }
 }
 
-function scheduleScrollScene(){
-  if(!rafScrollPending){
-    rafScrollPending=true;
-    requestAnimationFrame(()=>{
-      rafScrollPending=false;
-      updateScrollScene();
-    });
-  }
-}
+// Amortiguador de inercia cinematográfica (Momentum Smoothing)
+// Absorbe los tirones bruscos del motor táctil de Android y sincroniza a 60/120fps tanto en iOS como en Android
+let smoothedProgress=null;
+let targetProgress=0;
+let isLerpActive=false;
 
-// Control continuo por scroll con Parallax multicapa cinematográfico y zonas de lectura amplias (Android + iOS 60/120fps)
-function updateScrollScene(){
+function scheduleScrollScene(){
   const vh=stableVh||window.innerHeight||1;
   const scrollY=window.pageYOffset||document.documentElement.scrollTop||0;
   if(scrollY>6)lastScrolledDownTime=performance.now();
@@ -2103,7 +2098,45 @@ function updateScrollScene(){
   const flowTop=cachedFlowTop||flowEl.offsetTop;
   const totalTrack=Math.max(1,(cachedFlowHeight||flowEl.offsetHeight)-vh);
   const pRaw=(scrollY-flowTop)/totalTrack;
-  const p=Math.max(0,Math.min(1,pRaw));
+  targetProgress=Math.max(0,Math.min(1,pRaw));
+
+  if(smoothedProgress===null){
+    smoothedProgress=targetProgress;
+    updateScrollScene(smoothedProgress);
+    return;
+  }
+
+  if(!isLerpActive){
+    isLerpActive=true;
+    requestAnimationFrame(tickSmoothScroll);
+  }
+}
+
+function tickSmoothScroll(){
+  const diff=targetProgress-smoothedProgress;
+  // Factor 0.16: respuesta inmediata y orgánica sin sensación de lag, eliminando por completo los saltos bruscos
+  if(Math.abs(diff)<0.0003){
+    smoothedProgress=targetProgress;
+    updateScrollScene(smoothedProgress);
+    isLerpActive=false;
+    return;
+  }
+
+  smoothedProgress+=diff*0.16;
+  updateScrollScene(smoothedProgress);
+  requestAnimationFrame(tickSmoothScroll);
+}
+
+// Control continuo por scroll con Parallax multicapa cinematográfico y zonas de lectura amplias (Android + iOS 60/120fps)
+function updateScrollScene(customP){
+  const vh=stableVh||window.innerHeight||1;
+  const scrollY=window.pageYOffset||document.documentElement.scrollTop||0;
+  if(scrollY>6)lastScrolledDownTime=performance.now();
+
+  const flowTop=cachedFlowTop||flowEl.offsetTop;
+  const totalTrack=Math.max(1,(cachedFlowHeight||flowEl.offsetHeight)-vh);
+  const pRaw=(scrollY-flowTop)/totalTrack;
+  const p=(typeof customP==='number')?customP:Math.max(0,Math.min(1,pRaw));
   const isMobile=lastLayoutWidth<=768;
 
   const flowTopRel=flowTop-scrollY;
