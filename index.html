@@ -328,7 +328,7 @@ html.is-unlocked .music-toggle{
 .parents-date-flow{
   position:relative;
   width:100%;
-  height:2200svh;
+  height:1800svh;
   margin-top:-14svh;
   background:#000814;
 }
@@ -336,8 +336,8 @@ html.is-unlocked .music-toggle{
   position:sticky;
   top:0;
   width:100%;
+  height:100vh;
   height:100svh;
-  height:100dvh;
   overflow:hidden;
   isolation:isolate;
   backface-visibility:hidden;
@@ -998,7 +998,7 @@ html.is-unlocked .music-toggle{
   /* 2. Flujo continuo Padres -> Fecha -> Galería -> Ceremonia -> Celebración -> Cierre */
   .parents-date-flow{
     margin-top:-12svh;
-    height:2400svh;
+    height:1800svh;
   }
   .parents{
     padding:14svh 20px 16svh;
@@ -1025,7 +1025,7 @@ html.is-unlocked .music-toggle{
   }
   .date-section{
     justify-content:flex-start;
-    padding-top:clamp(28px,5svh,46px);
+    padding-top:clamp(50px,8.5svh,76px);
   }
   .date-bg-pic{
     position:absolute;
@@ -1184,7 +1184,7 @@ html.is-unlocked .music-toggle{
   .parents-content{width:64vw}
   .vine-left{height:clamp(360px,62svh,480px);left:-10px}
   .vine-right{height:clamp(320px,54svh,430px);right:-12px}
-  .date-section{padding-top:clamp(24px,4.5svh,40px)}
+  .date-section{padding-top:clamp(44px,7.8svh,68px)}
   .date-eyebrow{font-size:clamp(9.5px,2.7vw,12px);margin-bottom:4px}
   .date-num-wrap{width:clamp(240px,78vw,300px);margin-bottom:4px}
   .date-month{font-size:clamp(19px,6vw,26px);letter-spacing:.42em;padding-left:.42em;margin-bottom:4px}
@@ -2051,6 +2051,7 @@ const galLineBottom=document.querySelector('.gallery-axis-line.line-bottom');
 const galQuote=document.querySelector('.gallery-quote');
 const dateContent=document.querySelector('.date-content');
 const dateFgLights=document.querySelector('.date-fg-lights');
+const receptionImgShade=document.querySelector('.reception-img-shade');
 
 // Métricas de layout estables (evita saltos en Android cuando la barra de direcciones se oculta/muestra y elimina Layout Thrashing en iOS)
 let stableVh=window.innerHeight||1;
@@ -2072,7 +2073,7 @@ function updateLayoutMetrics(forceHeight){
     stableVh=flowSticky.offsetHeight;
   }
   cachedFlowTop=flowEl.offsetTop||0;
-  cachedFlowHeight=flowEl.offsetHeight||stableVh*22;
+  cachedFlowHeight=flowEl.offsetHeight||stableVh*18;
   if(parentsRose){
     cachedRoseBase=parentsRose.offsetWidth||44;
   }
@@ -2486,7 +2487,7 @@ function updateScrollScene(){
       ceremonyBg.style.transform='scale(1)';
       ceremonyBg.style.filter='none';
     }
-    if(ceremonyShade){ceremonyShade.style.opacity='1';}
+    if(ceremonyShade){ceremonyShade.style.opacity=(0.30+0.40*eSlit).toFixed(3);}
 
     if(ceremonyStaggers){
       ceremonyStaggers.forEach(el=>{
@@ -2520,10 +2521,10 @@ function updateScrollScene(){
       ceremonyBg.style.transform=`scale(${curScale.toFixed(3)})`;
       ceremonyBg.style.filter='none';
     }
-    if(ceremonyShade){ceremonyShade.style.opacity='1';}
 
     const pContent=Math.max(0,(p-0.605)/0.035);
     const eContent=pContent*pContent*(3-2*pContent);
+    if(ceremonyShade){ceremonyShade.style.opacity=(0.70+0.30*eContent).toFixed(3);}
 
     if(ceremonyStaggers){
       ceremonyStaggers.forEach((el,idx)=>{
@@ -2611,6 +2612,9 @@ function updateScrollScene(){
       receptionEl.style.opacity='0';
       receptionEl.style.pointerEvents='none';
     }
+    if(receptionImgShade){
+      receptionImgShade.style.opacity='0';
+    }
     if(receptionBgWrap&&isMobile){
       receptionBgWrap.style.height='100%';
       receptionBgWrap.style.webkitMaskImage='none';
@@ -2651,6 +2655,9 @@ function updateScrollScene(){
       receptionEl.style.filter='none';
       receptionEl.style.pointerEvents='none';
     }
+    if(receptionImgShade){
+      receptionImgShade.style.opacity='0';
+    }
     if(receptionBgWrap&&isMobile){
       receptionBgWrap.style.height='100%';
       receptionBgWrap.style.webkitMaskImage='none';
@@ -2672,8 +2679,8 @@ function updateScrollScene(){
       });
     }
   }
-  // Fase 12: Recuperación de nitidez, alejamiento a escala natural y revelación de "La celebración" (0.81 a 0.84)
-  else if(p<=0.84){
+  // Fase 12: Subida progresiva de la nube blanca y revelación de "La celebración" (0.81 a 0.855)
+  else if(p<=0.855){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
@@ -2689,15 +2696,23 @@ function updateScrollScene(){
       receptionEl.style.filter='none';
       receptionEl.style.pointerEvents='auto';
     }
-    if(receptionBgWrap&&isMobile){
-      receptionBgWrap.style.height='48svh';
-      receptionBgWrap.style.webkitMaskImage='';
-      receptionBgWrap.style.maskImage='';
-    }
 
-    const pSettle=(p-0.81)/0.03;
+    const pSettle=(p-0.81)/0.045;
     const eSettle=pSettle*pSettle*(3-2*pSettle);
     const recScale=1.08-(0.08*eSettle);
+
+    if(receptionImgShade){
+      receptionImgShade.style.opacity=eSettle.toFixed(3);
+    }
+    if(receptionBgWrap&&isMobile){
+      const curH=100-(52*eSettle);
+      const stopSolid=100-(48*eSettle);
+      const stopTrans=100-(4*eSettle);
+      const maskStr=eSettle<0.995?`linear-gradient(to bottom,#000 0%,#000 ${stopSolid.toFixed(1)}%,transparent ${stopTrans.toFixed(1)}%)`:'';
+      receptionBgWrap.style.height=`${curH.toFixed(1)}%`;
+      receptionBgWrap.style.webkitMaskImage=maskStr;
+      receptionBgWrap.style.maskImage=maskStr;
+    }
 
     if(receptionBg){
       receptionBg.style.transformOrigin=isMobile?'56% 32%':'50% 30%';
@@ -2705,7 +2720,7 @@ function updateScrollScene(){
       receptionBg.style.filter='none';
     }
 
-    const pTitle=Math.max(0,(p-0.815)/0.025);
+    const pTitle=Math.max(0,(p-0.82)/0.035);
     const eTitle=pTitle*pTitle*(3-2*pTitle);
 
     if(receptionStaggers){
@@ -2726,8 +2741,8 @@ function updateScrollScene(){
       receptionBgWrap.style.setProperty('--rec-bg-y','0px');
     }
   }
-  // Fase 13: RECEPCIÓN ASENTADA Y LECTURA CÓMODA DEL SALÓN Y PROGRAMA — Zona de lectura amplia (0.84 a 0.93)
-  else if(p<=0.93){
+  // Fase 13: RECEPCIÓN ASENTADA Y LECTURA CÓMODA DEL SALÓN Y PROGRAMA — Zona de lectura amplia (0.855 a 0.935)
+  else if(p<=0.935){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
@@ -2742,6 +2757,9 @@ function updateScrollScene(){
       receptionEl.style.pointerEvents='auto';
       receptionEl.style.transform='translate3d(0,0,0)';
       receptionEl.style.filter='none';
+    }
+    if(receptionImgShade){
+      receptionImgShade.style.opacity='1';
     }
     if(receptionBgWrap&&isMobile){
       receptionBgWrap.style.height='48svh';
@@ -2762,15 +2780,15 @@ function updateScrollScene(){
     }
 
     if(receptionContent&&isMobile){
-      const pScrollContent=(p-0.84)/0.09;
+      const pScrollContent=(p-0.855)/0.08;
       const shiftY=-5*pScrollContent*(vh/100);
       const bgY=-4*pScrollContent*(vh/100);
       receptionContent.style.setProperty('--rec-shift-y',`${shiftY.toFixed(1)}px`);
       if(receptionBgWrap)receptionBgWrap.style.setProperty('--rec-bg-y',`${bgY.toFixed(1)}px`);
     }
   }
-  // Fase 14: TRANSICIÓN SEDOSA Y CONTINUA: RECEPCIÓN -> LLUVIA DE SOBRES (0.93 a 0.965)
-  else if(p<=0.965){
+  // Fase 14: TRANSICIÓN SEDOSA Y CONTINUA: RECEPCIÓN -> LLUVIA DE SOBRES (0.935 a 0.968)
+  else if(p<=0.968){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     zoomOverlay.style.opacity='0';
@@ -2780,13 +2798,16 @@ function updateScrollScene(){
     if(galSection){galSection.style.opacity='0';galSection.style.pointerEvents='none';}
     if(ceremonyEl){ceremonyEl.style.opacity='0';ceremonyEl.style.pointerEvents='none';}
 
+    if(receptionImgShade){
+      receptionImgShade.style.opacity='1';
+    }
     if(receptionBgWrap&&isMobile){
       receptionBgWrap.style.height='48svh';
       receptionBgWrap.style.webkitMaskImage='';
       receptionBgWrap.style.maskImage='';
     }
 
-    const pTrans=(p-0.93)/0.035;
+    const pTrans=(p-0.935)/0.033;
     const eTrans=pTrans*pTrans*(3-2*pTrans);
 
     if(receptionEl){
