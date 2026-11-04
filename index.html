@@ -2081,10 +2081,6 @@ function updateLayoutMetrics(forceHeight){
   cachedFlowHeight=flowEl.offsetHeight||stableVh*18;
   if(parentsRose){
     cachedRoseBase=parentsRose.offsetWidth||44;
-    const rRect=parentsRose.getBoundingClientRect();
-    const sRect=flowSticky?flowSticky.getBoundingClientRect():{top:0,height:stableVh};
-    const roseCenterY=rRect.top+(rRect.height/2)-sRect.top;
-    cachedRoseStartY=roseCenterY-(stableVh/2);
   }
 }
 
@@ -2208,14 +2204,14 @@ function updateScrollScene(){
     galSection.style.pointerEvents='none';
   }
 
-  // Garantía de limpieza de Fecha cuando estamos antes de 0.19 o después de 0.43
-  if((p<0.19||p>0.43)&&dateEl){
+  // Garantía de limpieza de Fecha cuando estamos antes de 0.18 o después de 0.43
+  if((p<0.18||p>0.43)&&dateEl){
     dateEl.style.opacity='0';
     dateEl.style.pointerEvents='none';
   }
 
-  // Fase 1: Padres visibles y activos — Zona de lectura amplia (0.00 a 0.13)
-  if(p<=0.13){
+  // Fase 1: Padres visibles y activos (0.00 a 0.09) - Más ágil para no obligar a dar scrolls excesivos
+  if(p<=0.09){
     parentsEl.style.opacity='1';
     parentsEl.style.filter='none';
     parentsEl.style.pointerEvents='auto';
@@ -2231,10 +2227,11 @@ function updateScrollScene(){
     if(ceremonyEl){ceremonyEl.style.opacity='0';ceremonyEl.style.pointerEvents='none';ceremonyEl.style.clipPath='inset(0% 50% 0% 50%)';}
     if(receptionEl){receptionEl.style.opacity='0';receptionEl.style.pointerEvents='none';}
   }
-  // Fase 2: Transición Macro-Zoom Rosa (0.13 a 0.19)
-  else if(p<=0.19){
-    const ez=(p-0.13)/0.06;
-    const pFade=Math.min(1,ez/0.28);
+  // Fase 2: Transición Macro-Zoom Rosa (0.09 a 0.18) - Ventana ampliada con curva suave para eliminar brincos en Android
+  else if(p<=0.18){
+    const pProg=(p-0.09)/0.09;
+    const ez=pProg*pProg*(3-2*pProg); // Curva cúbica suave (smoothstep) que evita saltos bruscos
+    const pFade=Math.min(1,pProg/0.35);
     parentsEl.style.opacity=(1-pFade).toFixed(3);
     parentsEl.style.filter=(!isMobile&&pFade>0)?`blur(${(pFade*5).toFixed(1)}px)`:'none';
     parentsEl.style.pointerEvents='none';
@@ -2243,16 +2240,14 @@ function updateScrollScene(){
     zoomOverlay.style.opacity='1';
 
     const diag=Math.hypot(lastLayoutWidth,vh);
-    const maxScale=isMobile?18:Math.max(24,(diag*1.25)/cachedRoseBase);
+    const maxScale=isMobile?16:Math.max(22,(diag*1.2)/cachedRoseBase);
 
-    const curY=cachedRoseStartY*(1-ez);
-    const curScale=1+(maxScale-1)*Math.pow(ez,2.1);
-    const curRot=ez*24;
-    // Conservar la rosa completamente nítida durante el acercamiento para máxima textura
-    const pEndBlur=Math.max(0,(ez-0.75)/0.25);
-    const curBlur=pEndBlur*3.0;
+    const curScale=1+(maxScale-1)*ez;
+    const curRot=ez*20;
+    const pEndBlur=Math.max(0,(pProg-0.80)/0.20);
+    const curBlur=pEndBlur*2.5;
 
-    zoomRose.style.transform=`translate3d(0,${curY.toFixed(1)}px,0) scale(${curScale.toFixed(2)}) rotate(${curRot.toFixed(1)}deg)`;
+    zoomRose.style.transform=`translate3d(0,0,0) scale(${curScale.toFixed(2)}) rotate(${curRot.toFixed(1)}deg)`;
     zoomRose.style.filter=curBlur>0.3?`blur(${curBlur.toFixed(1)}px)`:'none';
     zoomRose.style.opacity='1';
 
@@ -2266,20 +2261,20 @@ function updateScrollScene(){
     if(ceremonyEl){ceremonyEl.style.opacity='0';ceremonyEl.style.pointerEvents='none';ceremonyEl.style.clipPath='inset(0% 50% 0% 50%)';}
     if(receptionEl){receptionEl.style.opacity='0';receptionEl.style.pointerEvents='none';}
   }
-  // Fase 3: Revelación suave de la Fecha (0.19 a 0.26)
+  // Fase 3: Revelación suave de la Fecha (0.18 a 0.26)
   else if(p<=0.26){
     parentsEl.style.opacity='0';
     parentsEl.style.pointerEvents='none';
     parentsRose.style.opacity='0';
 
-    const pSettle=(p-0.19)/0.07;
+    const pSettle=(p-0.18)/0.08;
 
     const diag=Math.hypot(lastLayoutWidth,vh);
-    const maxScale=isMobile?18:Math.max(24,(diag*1.25)/cachedRoseBase);
-    const overScale=maxScale*(1+0.22*Math.min(1,pSettle));
-    const overRot=24+Math.min(1,pSettle)*6;
+    const maxScale=isMobile?16:Math.max(22,(diag*1.2)/cachedRoseBase);
+    const overScale=maxScale*(1+0.18*Math.min(1,pSettle));
+    const overRot=20+Math.min(1,pSettle)*5;
 
-    const roseOp=Math.max(0,1-(pSettle/0.48));
+    const roseOp=Math.max(0,1-(pSettle/0.45));
     zoomOverlay.style.opacity=roseOp>0?'1':'0';
     zoomRose.style.opacity=roseOp.toFixed(3);
     if(roseOp>0){
